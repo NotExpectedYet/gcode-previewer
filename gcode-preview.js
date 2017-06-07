@@ -1,192 +1,149 @@
-function initCanvas() {
-    var canvas = document.getElementById('renderer');
-    var ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+const Colors = {
+    Cura_SteamEngine : {
+        skirt : 'lime',
+        'wall-inner' : 'purple',
+        'wall-outer' : 'blue',
+        skin : 'red',
+        fill : 'orange',
+        support: 'rgba(255,255,255,0.5)'
+    },
+    Simplify3D : {
+        skirt : 'lime',
+        'inner perimeter' : 'purple',
+        'outer perimeter' : 'blue',
+        skin : 'solid layer',
+        fill : 'infill',
+        support: 'rgba(255,255,255,0.5)'
+    }
+};
 
-    return [canvas, ctx];
-}
+class GCodePreview {
+    constructor(opts) {
+        this.targetId = opts.targetId;
+        this.limit = opts.limit;
+        this.scale = opts.scale;
+        this.rotation = opts.rotation === undefined ? 0 : opts.rotation;
+        this.rotationAnimation = opts.rotationAnimation;
+        this.zoneColors = opts.zoneColors;
 
-function title() {
-    ctx.save()
-    ctx.scale(1,-1)
-    ctx.fillStyle = 'rgba(255,128,128,0.5)';
-    ctx.font = '72px Verdana'
-    ctx.fillText("GCode preview", -275,-120)
-    ctx.restore();
-}
+        const target = document.getElementById(this.targetId);
+        if (!target) throw new Error('Unable to find element ' + targetId);
 
-function info() {
-    ctx.save()
-    ctx.scale(1,-1)
-    ctx.fillStyle = 'rgba(255,128,128,0.5)';
-    ctx.font = '36px Verdana'
-    ctx.fillText("Drop a .gcode file here", -210,165)
-    ctx.restore();
-}
+        this.canvas = document.createElement('canvas');
+        this.ctx = this.canvas.getContext('2d');
+        target.appendChild(this.canvas);
+        this.resize();
+    }
 
-function loading() {
-    ctx.save()
-    ctx.scale(1,-1)
-    ctx.fillStyle = 'rgba(255,128,128,0.5)';
-    ctx.font = '42px Verdana'
-    ctx.fillText("Loading..", -70,0)
-    ctx.restore();
-}
+    resize (canvas) {
+        this.canvas.width = this.canvas.offsetWidth;
+        this.canvas.height = this.canvas.offsetHeight;
+    }
 
-function grid(columnWidth, rowWidth, color) {
-    ctx.fillStyle = color;
-    for(var column = -canvas.width ; column < canvas.width ; column += columnWidth) {
-        for(var row = -canvas.height ; row < canvas.height ; row += rowWidth) {
-            if ((row+column) % 2)
-                ctx.fillRect(column, row, columnWidth, rowWidth);
+    getZoneColor(zone, layerIndex) {
+
+        const brightness = Math.round(layerIndex/this.layers.length * 80);
+        if (!this.zoneColors)
+            return 'hsl(0, 0%, '+brightness+'%)';
+
+        const colors = Colors[this.header.slicer];
+        return colors[zone];
+    }
+
+    renderZone(l, layerIndex) {
+        this.ctx.strokeStyle = this.getZoneColor(l.zone, layerIndex);
+        this.ctx.beginPath();
+        for (const cmd of l.commands) {
+            if (cmd.g == 0)
+                this.ctx.moveTo(cmd.x, cmd.y)
+            else if (cmd.g == 1)
+                this.ctx.lineTo(cmd.x, cmd.y)
+        }
+        this.ctx.stroke();
+    }
+
+
+    drawLayer(index, limit) {
+        if (index > limit) return;
+
+        const layer = this.layers[index];
+        const offset = 0.1 * index;
+
+        this.ctx.save();
+
+        this.ctx.scale(this.scale, this.scale);
+        this.ctx.translate(0, offset);
+        this.ctx.rotate(this.rotation * Math.PI / 180);
+
+        // center model
+        const center = getCenter(this.layers[0]);
+        this.ctx.translate(-center.x, -center.y);
+
+        // draw zones
+        for (const zone of layer.zones) {
+            this.renderZone(zone, index);
+        }
+        this.ctx.restore();
+    }
+
+    render() {
+        // reset
+        this.canvas.width = this.canvas.width;
+        this.ctx.lineWidth = 0.1;
+
+        // info();
+
+        this.ctx.scale(1,-1);
+
+        // center on 0,0
+        this.ctx.translate(this.canvas.width/2,-this.canvas.height/2);
+
+        for (let index=0 ; index < this.layers.length ; index++ ) {
+            this.drawLayer(index, this.limit);
         }
     }
-}
-function parseLine(line) {
-    const values = line.split(' ');
-    const cmd = {};
-    values.forEach( v => {
-        cmd[ v.slice(0,1).toLowerCase() ] = +v.slice(1);
-    });
-    return cmd;
-}
 
-function groupIntoZones(lines) {
-    const zones = [{lines: []}];
-    var currentZone = zones[0];
+    processGCode(gcode) {
+        console.time('parsing');
+        const { header, layers, limit } = parseGcode(gcode);
+        console.timeEnd('parsing');
 
-    for(const l of lines) {
-        if (l.startsWith(';TYPE:') ) {
-            currentZone = {zone: l.slice(6).toLowerCase(), lines: [] };
-            // console.log(currentZone.zone);
-            zones.push(currentZone);
-            continue;
-        }
+        this.header = header;
+        this.layers = layers;
+        this.limit = limit;
 
-        currentZone.lines.push(l);
+        console.time('rendering');
+        this.render();
+        console.timeEnd('rendering');
     }
 
-    return zones;
-}
+    animationLoop() {
+        if (!this.rotationAnimation) return;
+        requestAnimationFrame(this.animationLoop.bind(this));
 
-function groupIntoLayers(lines) {
-    const layers = [];
-    var currentLayer;
-
-    for(const l of lines) {
-        if (l.startsWith(';LAYER:') ) {
-            currentLayer = {layer: parseInt(l.slice(7), 10), lines: [] };
-            // console.log(currentLayer.layer);
-            layers.push(currentLayer);
-            continue;
-        }
-        if (currentLayer)
-            currentLayer.lines.push(l);
+        this.rotation += 2;
+        this.rotation %= 360;
+        // rotationSlider.value = rotation;
+        this.render();
     }
 
-    return layers;
-}
-
-function parseGcode(input) {
-    const lines = input
-        .split('\n')
-        .filter(l => l.length>0); // discard empty lines
-
-    const layers = groupIntoLayers(lines);
-    for (layer of layers) {
-        layer.zones = groupIntoZones(layer.lines);
+    startAnimation() {
+        this.rotationAnimation = true;
+        // rotationSlider.setAttribute('disabled', 'disabled');
+        this.animationLoop();
     }
-    // console.log(layers);
-
-    layers.forEach(l => l.zones.forEach(z => z.commands = z.lines.map(parseLine)));
-
-    return layers;
-}
-
-function renderZone(l) {
-    // console.log(l.zone)
-    ctx.strokeStyle = colors[l.zone];
-    ctx.beginPath();
-    for (cmd of l.commands) {
-        // console.log(cmd);
-        if (cmd.g == 0)
-            ctx.moveTo(cmd.x, cmd.y)
-        else if (cmd.g == 1)
-            ctx.lineTo(cmd.x, cmd.y)
+    stopAnimation() {
+        this.rotationAnimation = false;
+        // rotationSlider.removeAttribute('disabled');
     }
-    ctx.stroke();
 }
 
-function renderLayers(layers, limit, animate) {
-    const center = getCenter(layers[0]);
-    // const size = getSize(layers[0]);
-    // const screenSize = Math.max(innerHeight, innerWidth);
-    const scale = 5;
 
-    // reset
-    canvas.width = canvas.width;
-
-    // make y go up
-    ctx.scale(1,-1);
-
-    // center on 0,0
-    ctx.translate(canvas.width/2,-canvas.height/2);
-
-    // draw background
-    ctx.save()
-    ctx.scale(scale, scale);
-    grid(columnWidth, rowWidth, '#ddd');
-    ctx.restore();
-    title();
-    info();
-
-    ctx.scale(scale, scale);
-    ctx.lineWidth = 0.1;
-
-    // center model (doesn't work that goe)
-    ctx.translate(-center.x, -center.y);
-
-
-    if (animate)
-        animateLayers(0, limit, layers);
-    else
-        for (let [index, layer] of layers.entries()) {
-            if (index > limit) return;
-            const offset = 0.1 * index;
-            ctx.save();
-            ctx.translate(offset, offset);
-            for (zone of layer.zones) {
-                renderZone(zone);
-            }
-            ctx.restore();
-        }
-
-}
-
-function animateLayers(index, limit, layers) {
-    if (index > limit) return;
-    const layer = layers[index];
-    if (!layer) return;
-    const offset = 0.1 * index;
-    ctx.save();
-    ctx.translate(offset, offset);
-    for (zone of layer.zones) {
-        renderZone(zone);
-    }
-    ctx.restore();
-
-    setTimeout(function() {
-        animateLayers(index+1, limit, layers);
-    },16.6)
-}
-
-function getOuterBounds() {
+function getOuterBounds(layer) {
     let minX = Infinity,
         maxX = -Infinity,
         minY = Infinity,
         maxY = -Infinity;
-
 
     outer:
     for(let zone of layer.zones) {
@@ -201,7 +158,6 @@ function getOuterBounds() {
         }
     }
 
-
     return {
         minX,
         maxX,
@@ -212,7 +168,6 @@ function getOuterBounds() {
 
 function getCenter(layer) {
     const bounds = getOuterBounds(layer);
-    // console.log(bounds);
 
     return {
         x : bounds.minX + (bounds.maxX - bounds.minX) / 2,
@@ -225,71 +180,6 @@ function getSize(layer) {
 
     const sizeX = bounds.maxX - bounds.minX;
     const sizeY = bounds.maxY - bounds.minY;
-    // console.log(sizeX,sizeY);
     return Math.min(sizeX, sizeY);
 }
 
-function processGCode(gcode) {
-    console.time('parsing');
-    layers = parseGcode(gcode);
-    console.timeEnd('parsing');
-
-    console.log('layers', layers.length)
-
-    console.time('rendering');
-    renderLayers(layers, layers.length, true);
-    // ctx.fillRect(center.x,center.y,10,10)
-    console.timeEnd('rendering');
-    var slider = document.getElementById('layers');
-    slider.setAttribute('max', layers.length);
-    // slider.setAttribute('value', layers.length);
-    slider.value = layers.length;
-}
-
-function loadGCode(file) {
-    console.log(file.name, file.size + " bytes")
-    var reader = new FileReader();
-
-    reader.onload = function(e) {
-        processGCode(reader.result);
-    }
-    reader.readAsText(file);
-}
-
-function initEvents() {
-    var slider = document.getElementById('layers');
-    slider.addEventListener('change', function(evt) {
-        renderLayers(layers, slider.value, false);
-    });
-
-    canvas.addEventListener(
-    'dragover',
-    function handleDragOver(evt) {
-        evt.stopPropagation()
-        evt.preventDefault()
-        evt.dataTransfer.dropEffect = 'copy'
-    });
-
-    canvas.addEventListener(
-    'drop',
-    function(evt) {
-        evt.stopPropagation()
-        evt.preventDefault()
-        var files = evt.dataTransfer.files  // FileList object.
-        var file = files[0]                 // File     object.
-        loadGCode(file);
-    });
-}
-
-const G0 = 'G0';
-const G1 = 'G1';
-
-const colors = {
-    skirt : 'lime',
-    'wall-inner' : 'purple',
-    'wall-outer' : 'blue',
-    skin : 'red',
-    fill : 'orange',
-    support: 'rgba(255,255,255,0.5)'
-};
-const columnWidth = 25, rowWidth = 25;

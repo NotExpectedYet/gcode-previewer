@@ -1,54 +1,39 @@
 
 
-<title>GCode preview in javascript</title>
+<title>GCode Previewer in javascript</title>
+<link rel="stylesheet" href="style.css" />
 
-
-<div class="controls">
-    GCode previewer by Remco Veldkamp
-    <i>(tested only on the latest Chrome)</i>
+<header class="controls">
+    <h1>GCode Previewer</h1>
+    <label>Render layers:&nbsp;<input type="range" min="0" value="0" id="layers" /></label>
+    <label>Scale:&nbsp;<input type="range" min="1" value="3" max="10" step="0.1" id="scale" /></label>
+    <label>Rotate:&nbsp;<input type="range" min="0" value="0" max="360"  id="rotation" /></label>
+    <button id="toggle-animation">toggle animation</button>
+    <label>Color zones:&nbsp;<input type="checkbox" id="zone-colors" value="test" /></label>
     <br>
-    <label>Render layers: <input type="range" min="0" value="0" id="layers" />
-    </label>
-</div>
-<canvas id="renderer"></canvas>
-<style>
-body {
-    margin: 0;
-    font-family: Verdana;
-}
-.controls {
-    position: absolute;
-    background: rgba(0,0,0,0.7);
-    top: 0;
-    left: 0;
-    right: 0;
-    color: #ccc;
-    padding: 5px;
-    text-align: center;
-}
-</style>
+    <tt>
+        <span id="file-info">Benchy</span>
+        <span id="layer-count"></span>
+    </tt>
+</header>
+<footer>
+    <div class="note">By <a href="http://twitter.com/remcoder">Remco Veldkamp</a>. Tested only in the latest Chrome.</div>
+
+    <a href="https://twitter.com/share" class="twitter-share-button" data-via="remcoder" data-hashtags="3dprinting" data-show-count="false">Tweet</a><script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+    <script type="text/javascript" src="//www.redditstatic.com/button/button1.js"></script>
+    <a class="github-button" href="https://github.com/remcoder/gcode-previewer" data-icon="octicon-star" data-count-href="/remcoder/gcode-previewer/stargazers" data-count-api="/repos/remcoder/gcode-previewer#stargazers_count" data-count-aria-label="# stargazers on GitHub" aria-label="Star remcoder/gcode-previewer on GitHub">Star</a>
+</footer>
+<div id="renderer" class="gcode-previewer"></div>
+
+<script src="gcode-parser.js"></script>
 <script src="gcode-preview.js"></script>
+<script src="demo.js"></script>
 <script>
-    const [canvas, ctx] = initCanvas();
-
-    // make y go up
-    ctx.scale(1,-1);
-
-    // center on 0,0
-    ctx.translate(canvas.width/2,-canvas.height/2);
-
-    // draw background
-    ctx.save()
-    ctx.scale(5,5   );
-    grid(columnWidth, rowWidth, '#ddd');
-    ctx.restore();
-    title();
-
-    loading();
-
+    const gcodeDemo = initDemo();
 </script>
-<script src="gcode.js"></script>
+<script src="benchy-cura.js"></script>
 <script>
-    processGCode(sample);
-    initEvents();
+    gcodeDemo.processGCode(sample);
+    updateUI();
 </script>
+<script async defer src="https://buttons.github.io/buttons.js"></script>
